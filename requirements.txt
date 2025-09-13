@@ -1,0 +1,11 @@
+python-socketio==5.0.4
+requests==2.26.0
+websocket-client==1.2.1
+python-dotenv==0.19.0
+python-engineio==4.0.1
+aiohttp==3.7.4.post0
+keyboard==0.13.5; platform_system=="Windows"
+# Better error handling
+urllib3>=1.26.5
+# For system tray integration (optional)
+pystray==0.19.4; platform_system=="Windows"
