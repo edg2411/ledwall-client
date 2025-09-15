@@ -1,7 +1,7 @@
 {
-    "server_url": "http://192.168.0.141:5000",
-    "name": "edgrpi",
     "width": 180,
     "height": 180,
-    "client_id": "b4358e12-6977-4ece-bae0-29165fee4440"
+    "server_url": "http://localhost:5050",
+    "name": "DESKTOP-636IIGI",
+    "client_id": "efa536f7-f6b8-4e93-a27a-616c90991a92"
 }
