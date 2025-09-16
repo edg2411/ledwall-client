@@ -18,15 +18,17 @@ POLLING_INTERVAL = 30  # seconds
 class ServerConnection:
     """Handles communication with the LED Wall server"""
     
-    def __init__(self, config_manager, content_callback=None):
+    def __init__(self, config_manager, content_callback=None, price_callback=None):
         """Initialize server connection
-        
+
         Args:
             config_manager: Configuration manager instance
-            content_callback: Callback function for content updates
+            content_callback: Callback function for content updates (legacy)
+            price_callback: Callback function for price updates
         """
         self.config = config_manager
         self.content_callback = content_callback
+        self.price_callback = price_callback
         self.server_url = self.config.server_url
         self.client_id = self.config.get_client_id()
         self.socket = None
@@ -34,7 +36,8 @@ class ServerConnection:
         self._polling_thread = None
         self._polling_active = False
         self._last_handled_content_id = None
-        
+        self._current_prices = None
+
         # Ensure download directory exists
         os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
     
@@ -144,7 +147,10 @@ class ServerConnection:
             self.socket_connected = True
             # Register with socket after connection
             self.socket.emit('register', {'client_id': self.client_id})
-            
+
+            # Request current prices
+            self.socket.emit('request_prices')
+
             # Stop polling if active (no need for both)
             self._polling_active = False
         
@@ -179,6 +185,12 @@ class ServerConnection:
             content_id = data.get('content_id')
             logger.info(f"New content assigned via WebSocket: {content_id}")
             self._handle_content_update(content_id)
+
+        @self.socket.on('price_update')
+        def on_price_update(data):
+            prices = data.get('prices', [])
+            logger.info(f"Price update received via WebSocket: {prices}")
+            self._handle_price_update(prices)
     
     def _start_polling(self):
         """Start polling thread for server updates"""
@@ -275,6 +287,35 @@ class ServerConnection:
         except Exception as e:
             logger.error(f"Error handling content update: {str(e)}")
             self._last_handled_content_id = None  # Reset to allow retry
+            return False
+
+    def _handle_price_update(self, prices):
+        """Handle price update from server
+
+        Args:
+            prices: List of price strings
+        """
+        try:
+            # Check if prices have actually changed
+            if prices == self._current_prices:
+                logger.info("Prices unchanged, skipping update")
+                return True
+
+            # Update current prices
+            self._current_prices = prices.copy()
+
+            logger.info(f"Processing price update: {prices}")
+
+            # Call the price callback if provided
+            if self.price_callback:
+                self.price_callback(prices)
+                return True
+            else:
+                logger.warning("No price callback configured")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error handling price update: {str(e)}")
             return False
     
     def ensure_content_downloaded(self, content_id, content_info):

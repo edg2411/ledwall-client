@@ -1,6 +1,6 @@
 """
 Media Player Module for LED Wall Client
-Handles media playback using FFplay
+Handles media playback using FFplay and price display generation
 """
 import os
 import time
@@ -17,7 +17,7 @@ class MediaPlayer:
     
     def __init__(self, config_manager):
         """Initialize the media player
-        
+
         Args:
             config_manager: The configuration manager instance
         """
@@ -25,6 +25,18 @@ class MediaPlayer:
         self.player_process = None
         self.is_windows = platform.system() == "Windows"
         self.is_raspberry_pi = self.config._detect_raspberry_pi()
+
+        # Initialize price display generator
+        try:
+            from .price_display import PriceDisplay
+            self.price_display = PriceDisplay(
+                width=self.config.width,
+                height=self.config.height
+            )
+            logger.info("Price display generator initialized")
+        except ImportError as e:
+            logger.error(f"Failed to import PriceDisplay: {e}")
+            self.price_display = None
     
     def is_ffplay_available(self):
         """Check if ffplay is available in the system PATH"""
@@ -119,6 +131,122 @@ class MediaPlayer:
         except Exception as e:
             logger.error(f"Error playing content: {str(e)}")
             return False
+
+    def display_prices(self, prices, callback=None):
+        """Display price information on the LED wall
+
+        Args:
+            prices: List of 5 price strings
+            callback: Optional callback when display is ready
+
+        Returns:
+            bool: True if display started successfully, False otherwise
+        """
+        try:
+            if not self.price_display:
+                logger.error("Price display generator not available")
+                return False
+
+            # Check if ffplay is available
+            if not self.is_ffplay_available():
+                logger.error("FFplay is not installed. Cannot display prices.")
+                return False
+
+            # Generate price display image
+            image_path = self.price_display.generate_price_image(prices, "current_prices.png")
+            if not image_path:
+                logger.error("Failed to generate price display image")
+                return False
+
+            width = self.config.width
+            height = self.config.height
+
+            # FFmpeg command to display the image
+            cmd = [
+                'ffplay',
+                '-x', str(width),
+                '-y', str(height),
+                '-alwaysontop',
+                '-noborder',
+                '-loop', '0',  # Loop continuously
+                '-window_title', 'LEDWallPlayer',
+                '-left', '0',
+                '-top', '0',
+                image_path
+            ]
+
+            logger.info(f"Starting price display with command: {' '.join(cmd)}")
+
+            # Stop any existing playback
+            self.stop()
+
+            # Start the display process
+            if not self.is_windows:
+                # Linux/Raspberry Pi version
+                with open(os.devnull, 'w') as devnull:
+                    self.player_process = subprocess.Popen(
+                        cmd,
+                        stdout=devnull,
+                        stderr=devnull,
+                        start_new_session=True
+                    )
+
+                # Position window on Raspberry Pi
+                if self.is_raspberry_pi:
+                    try:
+                        time.sleep(1)
+                        if shutil.which('xdotool'):
+                            move_cmd = [
+                                'xdotool', 'search', '--name', 'LEDWallPlayer',
+                                'windowmove', '0', '0', 'windowactivate'
+                            ]
+                            subprocess.Popen(move_cmd)
+                    except Exception as e:
+                        logger.warning(f"Could not position window: {str(e)}")
+            else:
+                # Windows version
+                self.player_process = subprocess.Popen(cmd)
+                # Position window properly on Windows
+                self._position_window_windows()
+
+            # Start monitor thread
+            monitor_thread = threading.Thread(
+                target=self._monitor_price_display,
+                args=(prices, callback)
+            )
+            monitor_thread.daemon = True
+            monitor_thread.start()
+
+            logger.info(f"Price display started for prices: {prices}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error displaying prices: {str(e)}")
+            return False
+
+    def _monitor_price_display(self, prices, callback=None):
+        """Monitor price display process
+
+        Args:
+            prices: Current prices being displayed
+            callback: Optional callback
+        """
+        process = self.player_process
+
+        if not process:
+            logger.warning("Monitor thread started but player_process is None")
+            return
+
+        try:
+            process.wait()
+            if process == self.player_process:
+                exit_code = process.returncode
+                logger.info(f"Price display process exited with code {exit_code}")
+
+                if callback:
+                    callback(prices, exit_code)
+        except Exception as e:
+            logger.error(f"Error monitoring price display: {str(e)}")
     
     def _position_window_windows(self):
         """Position the window at 0,0 and enable cursor hiding (Windows only)"""

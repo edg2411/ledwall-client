@@ -47,8 +47,9 @@ class LEDWallClient:
         self.player = MediaPlayer(self.config)
         self.ui = UIManager(self.player)
         self.server = ServerConnection(
-            self.config, 
-            content_callback=self.handle_content_update
+            self.config,
+            content_callback=self.handle_content_update,
+            price_callback=self.handle_price_update
         )
         
         # Set current content tracking
@@ -56,7 +57,7 @@ class LEDWallClient:
         
         # Check for FFplay
         if not self.player.is_ffplay_available():
-            logger.warning("FFplay not found! You need to install FFmpeg to play media content.")
+            logger.warning("FFplay not found! You need to install FFmpeg to display content and prices.")
             if self.player.is_windows:
                 logger.warning("Please visit https://ffmpeg.org/download.html to download FFmpeg and add it to your system PATH.")
                 logger.warning("Alternatively, you can download from https://github.com/BtbN/FFmpeg-Builds/releases")
@@ -153,6 +154,47 @@ class LEDWallClient:
             self.server.send_status_update('stopped', content_id)
             # Clear current content
             self.current_content = None
+
+    def handle_price_update(self, prices):
+        """Handle price updates from the server
+
+        Args:
+            prices: List of price strings
+        """
+        logger.info(f"Price update received: {prices}")
+
+        # Stop any current playback
+        self.player.stop()
+
+        # Display the new prices
+        success = self.player.display_prices(
+            prices,
+            callback=self.handle_price_display_ended
+        )
+
+        if success:
+            logger.info(f"Successfully started price display: {prices}")
+            # Send status update to server
+            self.server.send_status_update('playing', 'prices', f'Displaying prices: {prices}')
+        else:
+            logger.error(f"Failed to display prices: {prices}")
+            # Send error status to server
+            self.server.send_status_update('error', 'prices', f'Failed to display prices: {prices}')
+
+    def handle_price_display_ended(self, prices, exit_code):
+        """Handle price display end event
+
+        Args:
+            prices: The prices that were being displayed
+            exit_code: Exit code from the display process
+        """
+        logger.info(f"Price display ended for {prices} with exit code {exit_code}")
+
+        if exit_code != 0:
+            logger.warning(f"Price display ended unexpectedly with code {exit_code}")
+            # Could restart display here if needed
+        else:
+            logger.info(f"Price display ended normally for {prices}")
     
     def cleanup(self):
         """Clean up resources before exit"""
