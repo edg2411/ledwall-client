@@ -34,20 +34,24 @@ class PriceDisplay:
         self.row_height = height // self.rows
         self.half_width = width // 2
 
-        # Try to load a good font for price display, fallback to default
+        # Try to load a good font for LED wall price display, fallback to default
         try:
-            # Use Arial Bold for better readability and space utilization
-            self.font = ImageFont.truetype("arialbd.ttf", 72)
+            # Use Arial Black for maximum boldness and LED readability
+            self.font = ImageFont.truetype("arialblk.ttf", 72)
         except:
             try:
-                # Fallback to regular Arial
-                self.font = ImageFont.truetype("arial.ttf", 72)
+                # Fallback to Arial Bold
+                self.font = ImageFont.truetype("arialbd.ttf", 72)
             except:
                 try:
-                    self.font = ImageFont.truetype("DejaVuSans-Bold.ttf", 72)
+                    # Fallback to regular Arial
+                    self.font = ImageFont.truetype("arial.ttf", 72)
                 except:
-                    # Fallback to default font
-                    self.font = ImageFont.load_default()
+                    try:
+                        self.font = ImageFont.truetype("DejaVuSans-Bold.ttf", 72)
+                    except:
+                        # Fallback to default font
+                        self.font = ImageFont.load_default()
 
         logger.info(f"PriceDisplay initialized: {width}x{height}, {self.rows} rows")
 
@@ -127,12 +131,15 @@ class PriceDisplay:
         # Calculate font size to fit the cell
         font_size = self._calculate_font_size(formatted_price, text_width, text_height)
         try:
-            cell_font = ImageFont.truetype("arialbd.ttf", font_size)
+            cell_font = ImageFont.truetype("arialblk.ttf", font_size)
         except:
             try:
-                cell_font = ImageFont.truetype("arial.ttf", font_size)
+                cell_font = ImageFont.truetype("arialbd.ttf", font_size)
             except:
-                cell_font = self.font
+                try:
+                    cell_font = ImageFont.truetype("arial.ttf", font_size)
+                except:
+                    cell_font = self.font
 
         # Get text bounding box
         bbox = draw.textbbox((0, 0), formatted_price, font=cell_font)
@@ -163,22 +170,25 @@ class PriceDisplay:
             int: Optimal font size
         """
         font_size = 24  # Start larger for better performance
-        max_font_size = 120  # Maximum reasonable size for large display
+        max_font_size = 150  # Larger maximum for taller text on LED display
 
         while font_size < max_font_size:
             try:
-                test_font = ImageFont.truetype("arialbd.ttf", font_size)
+                test_font = ImageFont.truetype("arialblk.ttf", font_size)
             except:
                 try:
-                    test_font = ImageFont.truetype("arial.ttf", font_size)
+                    test_font = ImageFont.truetype("arialbd.ttf", font_size)
                 except:
-                    test_font = self.font
+                    try:
+                        test_font = ImageFont.truetype("arial.ttf", font_size)
+                    except:
+                        test_font = self.font
 
             bbox = self.font.getbbox(text)
             text_width = bbox[2] - bbox[0]
             text_height = bbox[3] - bbox[1]
 
-            if text_width > max_width * 0.95 or text_height > max_height * 0.95:
+            if text_width > max_width or text_height > max_height:
                 return max(12, font_size - 2)  # Step back if too big
 
             font_size += 2
