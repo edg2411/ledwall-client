@@ -196,7 +196,7 @@ class PriceDisplay:
 # Example usage and testing
 if __name__ == "__main__":
     # Test the price display
-    display = PriceDisplay(width=256, height=320)
+    display = PriceDisplay(width=256, height=160)
 
     # Sample prices from docs.txt
     test_prices = ["1500", "1400", "1300", "1200", "1100"]

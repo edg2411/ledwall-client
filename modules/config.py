@@ -15,8 +15,8 @@ class ConfigManager:
     
     # Default configuration values
     DEFAULT_SERVER_URL = "http://localhost:5000"
-    DEFAULT_WIDTH = 180
-    DEFAULT_HEIGHT = 180
+    DEFAULT_WIDTH = 256
+    DEFAULT_HEIGHT = 160
     CONFIG_FILE = "config.json"
     
     def __init__(self):
