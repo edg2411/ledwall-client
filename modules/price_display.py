@@ -24,7 +24,7 @@ class PriceDisplay:
         # LED wall optimized colors (high contrast)
         self.colors = {
             'background': (0, 0, 0),      # Black background
-            'text': (255, 255, 0),        # Bright yellow text
+            'text': (255, 255, 255),      # White text
             'border': (255, 255, 255),    # White borders
             'shadow': (64, 64, 64)        # Dark gray shadow
         }
@@ -37,10 +37,10 @@ class PriceDisplay:
         # Try to load a good font, fallback to default
         try:
             # Use a bold, clear font suitable for LED displays
-            self.font = ImageFont.truetype("arial.ttf", 48)
+            self.font = ImageFont.truetype("arial.ttf", 72)
         except:
             try:
-                self.font = ImageFont.truetype("DejaVuSans-Bold.ttf", 48)
+                self.font = ImageFont.truetype("DejaVuSans-Bold.ttf", 72)
             except:
                 # Fallback to default font
                 self.font = ImageFont.load_default()
@@ -105,8 +105,8 @@ class PriceDisplay:
             x, y: Top-left coordinates
             width, height: Cell dimensions
         """
-        # Add some padding
-        padding = 10
+        # Add minimal padding for maximum text size
+        padding = 5
         text_x = x + padding
         text_y = y + padding
         text_width = width - (2 * padding)
@@ -160,8 +160,8 @@ class PriceDisplay:
         Returns:
             int: Optimal font size
         """
-        font_size = 12  # Start small
-        max_font_size = 72  # Maximum reasonable size
+        font_size = 24  # Start larger for better performance
+        max_font_size = 120  # Maximum reasonable size for large display
 
         while font_size < max_font_size:
             try:
