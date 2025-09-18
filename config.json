@@ -1,7 +1,7 @@
 {
     "width": 256,
     "height": 160,
-    "server_url": "http://localhost:5050",
+    "server_url": "http://192.168.1.170:5050",
     "name": "DESKTOP-636IIGI",
     "client_id": "efa536f7-f6b8-4e93-a27a-616c90991a92"
 }

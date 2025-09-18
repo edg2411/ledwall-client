@@ -34,16 +34,20 @@ class PriceDisplay:
         self.row_height = height // self.rows
         self.half_width = width // 2
 
-        # Try to load a good font, fallback to default
+        # Try to load a good font for price display, fallback to default
         try:
-            # Use a bold, clear font suitable for LED displays
-            self.font = ImageFont.truetype("arial.ttf", 72)
+            # Use Arial Bold for better readability and space utilization
+            self.font = ImageFont.truetype("arialbd.ttf", 72)
         except:
             try:
-                self.font = ImageFont.truetype("DejaVuSans-Bold.ttf", 72)
+                # Fallback to regular Arial
+                self.font = ImageFont.truetype("arial.ttf", 72)
             except:
-                # Fallback to default font
-                self.font = ImageFont.load_default()
+                try:
+                    self.font = ImageFont.truetype("DejaVuSans-Bold.ttf", 72)
+                except:
+                    # Fallback to default font
+                    self.font = ImageFont.load_default()
 
         logger.info(f"PriceDisplay initialized: {width}x{height}, {self.rows} rows")
 
@@ -123,9 +127,12 @@ class PriceDisplay:
         # Calculate font size to fit the cell
         font_size = self._calculate_font_size(formatted_price, text_width, text_height)
         try:
-            cell_font = ImageFont.truetype("arial.ttf", font_size)
+            cell_font = ImageFont.truetype("arialbd.ttf", font_size)
         except:
-            cell_font = self.font
+            try:
+                cell_font = ImageFont.truetype("arial.ttf", font_size)
+            except:
+                cell_font = self.font
 
         # Get text bounding box
         bbox = draw.textbbox((0, 0), formatted_price, font=cell_font)
@@ -136,14 +143,9 @@ class PriceDisplay:
         text_x_centered = x + (width - text_width_actual) // 2
         text_y_centered = y + (height - text_height_actual) // 2
 
-        # Draw text shadow for better visibility
-        shadow_offset = 2
-        draw.text((text_x_centered + shadow_offset, text_y_centered + shadow_offset),
-                 formatted_price, font=cell_font, fill=self.colors['shadow'])
-
-        # Draw main text
+        # Draw main text (no shadow for cleaner look)
         draw.text((text_x_centered, text_y_centered),
-                 formatted_price, font=cell_font, fill=self.colors['text'])
+                  formatted_price, font=cell_font, fill=self.colors['text'])
 
         # Draw cell border
         draw.rectangle([x, y, x + width - 1, y + height - 1],
@@ -165,15 +167,18 @@ class PriceDisplay:
 
         while font_size < max_font_size:
             try:
-                test_font = ImageFont.truetype("arial.ttf", font_size)
+                test_font = ImageFont.truetype("arialbd.ttf", font_size)
             except:
-                test_font = self.font
+                try:
+                    test_font = ImageFont.truetype("arial.ttf", font_size)
+                except:
+                    test_font = self.font
 
             bbox = self.font.getbbox(text)
             text_width = bbox[2] - bbox[0]
             text_height = bbox[3] - bbox[1]
 
-            if text_width > max_width * 0.9 or text_height > max_height * 0.9:
+            if text_width > max_width * 0.95 or text_height > max_height * 0.95:
                 return max(12, font_size - 2)  # Step back if too big
 
             font_size += 2
