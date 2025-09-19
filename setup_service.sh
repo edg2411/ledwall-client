@@ -86,7 +86,7 @@ cat > /usr/local/bin/wait-for-display.sh << 'EOL'
 # Get parameters from environment or command line
 DISPLAY_TO_CHECK="${1:-$DISPLAY}"
 USER_TO_CHECK="${2:-$USER}"
-MAX_WAIT=30
+MAX_WAIT=60  # Increased from 30 to 60 seconds for boot scenarios
 WAIT_COUNT=0
 
 echo "Waiting for display $DISPLAY_TO_CHECK to be available for user $USER_TO_CHECK..."
@@ -117,7 +117,7 @@ else
     done
 fi
 
-echo "Display $DISPLAY_TO_CHECK not available after $MAX_WAIT seconds for user $USER_TO_CHECK"
+echo "Display $DISPLAY_TO_CHECK not available after $MAX_WAIT seconds (2 minutes) for user $USER_TO_CHECK"
 exit 1
 EOL
 
@@ -240,10 +240,14 @@ fi
 
 # Ask user for startup method
 echo "Choose startup method:"
-echo "1. Smart wait (waits for display to be ready - recommended)"
-echo "2. Fixed delay (simple 45-second delay)"
-echo "3. Timer-based (starts 30s after boot)"
-read -p "Enter your choice (1/2/3): " startup_choice
+echo "1. Smart wait (waits up to 60 seconds for display to be ready)"
+echo "2. Fixed delay (simple 45-second delay - RECOMMENDED for boot issues)"
+echo "3. Timer-based (starts 30s after boot - MOST RELIABLE)"
+echo
+echo "NOTE: If you're having boot startup issues, choose option 2 or 3."
+echo "The smart wait (option 1) now waits up to 60 seconds instead of 30."
+read -p "Enter your choice (1/2/3) [2]: " startup_choice
+startup_choice=${startup_choice:-2}  # Default to option 2
 
 case $startup_choice in
     1)
@@ -340,9 +344,9 @@ echo "3. Or add the service user to the 'video' group:"
 echo "   sudo usermod -a -G video $SERVICE_USER"
 echo
 echo "STARTUP METHODS:"
-echo "• Smart detection: Waits for display to be ready (default)"
-echo "• Fixed delay: Simple 45-second wait"
-echo "• Timer: Starts 30s after boot"
+echo "• Smart detection: Waits up to 60 seconds for display to be ready"
+echo "• Fixed delay: Simple 45-second wait (recommended for boot issues)"
+echo "• Timer: Starts 30s after boot (most reliable for boot issues)"
 echo
 echo "If boot startup still fails, try a different startup method:"
 echo "  sudo ./setup_service.sh  # Re-run setup and choose option 2 or 3"
