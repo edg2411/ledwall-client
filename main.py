@@ -13,12 +13,15 @@ from modules.player import MediaPlayer
 from modules.network import ServerConnection
 from modules.ui import UIManager
 
-# Setup logging
+# Setup logging with absolute path
+script_dir = os.path.dirname(os.path.abspath(__file__))
+log_file = os.path.join(script_dir, "client.log")
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("client.log"),
+        logging.FileHandler(log_file),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -92,8 +95,10 @@ class LEDWallClient:
         # Stop current playback
         self.player.stop()
         
-        # Start playing the new content
-        file_path = os.path.join("downloads", content_info['filename'])
+        # Start playing the new content (use absolute path)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        downloads_dir = os.path.join(script_dir, "downloads")
+        file_path = os.path.join(downloads_dir, content_info['filename'])
         if not os.path.exists(file_path):
             logger.error(f"Content file does not exist: {file_path}")
             return False
@@ -135,8 +140,10 @@ class LEDWallClient:
             # Restart with delay to prevent rapid restart loops
             time.sleep(2)
             
-            # Try to restart playback
-            file_path = os.path.join("downloads", content_info['filename'])
+            # Try to restart playback (use absolute path)
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            downloads_dir = os.path.join(script_dir, "downloads")
+            file_path = os.path.join(downloads_dir, content_info['filename'])
             if os.path.exists(file_path):
                 logger.info(f"Restarting playback of {content_id}")
                 self.player.play(

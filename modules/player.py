@@ -152,8 +152,11 @@ class MediaPlayer:
                 logger.error("FFplay is not installed. Cannot display prices.")
                 return False
 
-            # Generate price display image
-            image_path = self.price_display.generate_price_image(prices, "current_prices.png")
+            # Generate price display image with absolute path
+            script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            image_filename = "current_prices.png"
+            image_path = os.path.join(script_dir, image_filename)
+            image_path = self.price_display.generate_price_image(prices, image_path)
             if not image_path:
                 logger.error("Failed to generate price display image")
                 return False

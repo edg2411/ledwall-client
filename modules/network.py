@@ -12,8 +12,11 @@ import threading
 logger = logging.getLogger("led_client.network")
 
 # Default constants
-DOWNLOAD_FOLDER = "downloads"
 POLLING_INTERVAL = 30  # seconds
+
+# Get absolute path for downloads folder
+SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DOWNLOAD_FOLDER = os.path.join(SCRIPT_DIR, "downloads")
 
 class ServerConnection:
     """Handles communication with the LED Wall server"""
