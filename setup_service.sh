@@ -33,6 +33,13 @@ fi
 
 echo "Service will run as user: $SERVICE_USER"
 
+# Get the user's home directory and X authority
+USER_HOME=$(eval echo ~$SERVICE_USER)
+USER_XAUTHORITY="$USER_HOME/.Xauthority"
+
+echo "User home: $USER_HOME"
+echo "X authority file: $USER_XAUTHORITY"
+
 # Check if virtual environment exists
 if [ ! -d "${SCRIPT_DIR}/venv" ]; then
     echo "ERROR: Virtual environment not found at ${SCRIPT_DIR}/venv"
@@ -42,18 +49,33 @@ fi
 
 # Detect display configuration (run as the actual user)
 HAS_PHYSICAL_DISPLAY=false
-if sudo -u "$SERVICE_USER" DISPLAY=:0 xset q &>/dev/null; then
+echo "Checking display access for user $SERVICE_USER..."
+
+# Try to detect available displays
+if sudo -u "$SERVICE_USER" DISPLAY=:0 xset q &>/dev/null 2>&1; then
     echo "Physical display detected on :0"
     HAS_PHYSICAL_DISPLAY=true
+    DETECTED_DISPLAY=":0"
+elif sudo -u "$SERVICE_USER" DISPLAY=:1 xset q &>/dev/null 2>&1; then
+    echo "Virtual display detected on :1"
+    HAS_PHYSICAL_DISPLAY=true
+    DETECTED_DISPLAY=":1"
+else
+    echo "No accessible display found for user $SERVICE_USER"
+    echo "Make sure the user is logged in and has an active X session"
+    echo "You can also try running: sudo -u $SERVICE_USER xhost +"
 fi
 
 # If using physical display, ask if the user wants to use it
 USE_PHYSICAL_DISPLAY=false
 if [ "$HAS_PHYSICAL_DISPLAY" = true ]; then
-    read -p "Physical display detected. Would you like to use it for the LED Wall? (y/n): " answer
+    read -p "Display detected on $DETECTED_DISPLAY. Would you like to use it for the LED Wall? (y/n): " answer
     if [[ "$answer" =~ ^[Yy]$ ]]; then
         USE_PHYSICAL_DISPLAY=true
     fi
+else
+    echo "No display detected. The service will be configured to use virtual display with Xvfb."
+    echo "Note: Virtual display may not show content on screen, only for headless operation."
 fi
 
 # Create appropriate systemd service file based on display choice
@@ -70,7 +92,9 @@ Type=simple
 User=${SERVICE_USER}
 Group=${SERVICE_GROUP}
 WorkingDirectory=${SCRIPT_DIR}
-Environment="DISPLAY=:0"
+Environment="DISPLAY=${DETECTED_DISPLAY}"
+Environment="HOME=${USER_HOME}"
+Environment="XAUTHORITY=${USER_XAUTHORITY}"
 Environment="PATH=${SCRIPT_DIR}/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStart=${SCRIPT_DIR}/venv/bin/python ${SCRIPT_DIR}/main.py
 Restart=on-failure
@@ -117,6 +141,8 @@ User=${SERVICE_USER}
 Group=${SERVICE_GROUP}
 WorkingDirectory=${SCRIPT_DIR}
 Environment="DISPLAY=:1"
+Environment="HOME=${USER_HOME}"
+Environment="XAUTHORITY=${USER_XAUTHORITY}"
 Environment="PATH=${SCRIPT_DIR}/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStart=${SCRIPT_DIR}/venv/bin/python ${SCRIPT_DIR}/main.py
 Restart=on-failure
@@ -158,11 +184,19 @@ if [ "$USE_PHYSICAL_DISPLAY" = false ]; then
     systemctl start xvfb-ledwall.service
 fi
 
+# Try to set up display permissions for the user
+echo "Setting up display permissions..."
+if [ "$USE_PHYSICAL_DISPLAY" = true ]; then
+    echo "Attempting to grant display access to user $SERVICE_USER..."
+    sudo -u "$SERVICE_USER" xhost + &>/dev/null || true
+fi
+
 if systemctl start ledwall.service; then
     echo "LED Wall service started successfully"
 else
     echo "ERROR: Failed to start LED Wall service"
     echo "Check the service status with: sudo systemctl status ledwall"
+    echo "Check logs with: sudo journalctl -u ledwall -f"
     exit 1
 fi
 
@@ -185,6 +219,15 @@ echo "  sudo systemctl status ledwall   # Check service status"
 echo
 echo "View logs with:"
 echo "  sudo journalctl -u ledwall -f"
+echo
+echo "IMPORTANT: If the service fails to display content, you may need to:"
+echo "1. Ensure the user $SERVICE_USER is logged in with an active X session"
+echo "2. Allow the user to access the display:"
+echo "   sudo -u $SERVICE_USER xhost +"
+echo "3. Or add the service user to the 'video' group:"
+echo "   sudo usermod -a -G video $SERVICE_USER"
+echo
+echo "If using virtual display (Xvfb), content will run headless and won't be visible on screen."
 
 if [ "$USE_PHYSICAL_DISPLAY" = false ]; then
     echo
