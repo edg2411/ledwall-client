@@ -141,6 +141,7 @@ Environment="DISPLAY=${DETECTED_DISPLAY}"
 Environment="HOME=${USER_HOME}"
 Environment="XAUTHORITY=${USER_XAUTHORITY}"
 Environment="PATH=${SCRIPT_DIR}/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+TimeoutStartSec=300
 ExecStartPre=/usr/local/bin/wait-for-display.sh ${DETECTED_DISPLAY} ${SERVICE_USER}
 ExecStart=${SCRIPT_DIR}/venv/bin/python ${SCRIPT_DIR}/main.py
 Restart=on-failure
@@ -238,56 +239,62 @@ if [ "$USE_PHYSICAL_DISPLAY" = true ]; then
     sudo -u "$SERVICE_USER" xhost + &>/dev/null || true
 fi
 
-# Ask user for startup method
-echo "Choose startup method:"
-echo "1. Smart wait (waits up to 60 seconds for display to be ready)"
-echo "2. Fixed delay (simple 45-second delay - RECOMMENDED for boot issues)"
-echo "3. Timer-based (starts 30s after boot - MOST RELIABLE)"
-echo
-echo "NOTE: If you're having boot startup issues, choose option 2 or 3."
-echo "The smart wait (option 1) now waits up to 60 seconds instead of 30."
-read -p "Enter your choice (1/2/3) [2]: " startup_choice
-startup_choice=${startup_choice:-2}  # Default to option 2
+# Simplified approach: Create a user startup script
+echo "Setting up automatic startup using user login script..."
+echo "This will start the LED Wall client when the user logs in."
 
-case $startup_choice in
-    1)
-        echo "Using smart display detection (current setup)..."
-        ;;
-    2)
-        echo "Switching to fixed delay method..."
-        # Replace ExecStartPre with a simple sleep
-        sed -i 's|ExecStartPre=/usr/local/bin/wait-for-display.sh.*|ExecStartPre=/bin/sleep 45|' /etc/systemd/system/ledwall.service
-        systemctl daemon-reload
-        echo "Service updated to use 45-second delay."
-        ;;
-    3)
-        echo "Creating delayed startup timer..."
+# Create a simple startup script for the user
+STARTUP_SCRIPT="$USER_HOME/.ledwall_startup.sh"
 
-        # Create timer service
-        cat > /etc/systemd/system/ledwall.timer << EOL
-[Unit]
-Description=LED Wall Client Delayed Startup Timer
-Requires=ledwall.service
+cat > "$STARTUP_SCRIPT" << EOL
+#!/bin/bash
+# LED Wall Client Startup Script
+# This script runs when the user logs in
 
-[Timer]
-OnBootSec=30s
-Unit=ledwall.service
+# Wait a moment for the desktop to fully load
+sleep 10
 
-[Install]
-WantedBy=timers.target
+# Check if LED Wall is already running
+if pgrep -f "python.*main.py" > /dev/null; then
+    echo "LED Wall Client is already running"
+    exit 0
+fi
+
+# Start the LED Wall Client
+echo "Starting LED Wall Client..."
+cd "$SCRIPT_DIR"
+./venv/bin/python main.py &
+
+echo "LED Wall Client started in background"
 EOL
 
-        # Disable the automatic startup and enable timer instead
-        systemctl disable ledwall.service
-        systemctl enable ledwall.timer
-        systemctl start ledwall.timer
+chmod +x "$STARTUP_SCRIPT"
 
-        echo "Timer created! Service will start 30 seconds after boot."
-        ;;
-    *)
-        echo "Using default smart display detection..."
-        ;;
-esac
+# Add to user's autostart (works with most desktop environments)
+AUTOSTART_DIR="$USER_HOME/.config/autostart"
+mkdir -p "$AUTOSTART_DIR"
+
+cat > "$AUTOSTART_DIR/ledwall.desktop" << EOL
+[Desktop Entry]
+Type=Application
+Name=LED Wall Client
+Exec=$STARTUP_SCRIPT
+Terminal=false
+EOL
+
+# Also add to user's bashrc as backup
+if ! grep -q "LED Wall" "$USER_HOME/.bashrc" 2>/dev/null; then
+    echo "# LED Wall Client Auto-start" >> "$USER_HOME/.bashrc"
+    echo "if [ -f \"$STARTUP_SCRIPT\" ]; then" >> "$USER_HOME/.bashrc"
+    echo "    $STARTUP_SCRIPT &" >> "$USER_HOME/.bashrc"
+    echo "fi" >> "$USER_HOME/.bashrc"
+fi
+
+# Set ownership of created files
+chown -R "$SERVICE_USER:$SERVICE_GROUP" "$USER_HOME/.ledwall_startup.sh" "$AUTOSTART_DIR/ledwall.desktop" 2>/dev/null || true
+
+echo "Startup script created successfully!"
+echo "The LED Wall Client will start automatically when user $SERVICE_USER logs in."
 
 if systemctl start ledwall.service; then
     echo "LED Wall service started successfully"
@@ -309,32 +316,15 @@ fi
 echo
 echo "Service installed and started!"
 echo
-echo "You can manage the service with these commands:"
-echo "  sudo systemctl start ledwall    # Start the service"
-echo "  sudo systemctl stop ledwall     # Stop the service"
-echo "  sudo systemctl restart ledwall  # Restart the service"
-echo "  sudo systemctl status ledwall   # Check service status"
+echo "The LED Wall Client is now configured to start automatically when user $SERVICE_USER logs in."
 echo
-case $startup_choice in
-    3)
-        echo "Timer management:"
-        echo "  sudo systemctl start ledwall.timer    # Start timer"
-        echo "  sudo systemctl stop ledwall.timer     # Stop timer"
-        echo "  sudo systemctl status ledwall.timer   # Check timer status"
-        echo "  sudo systemctl list-timers            # List all timers"
-        echo
-        ;;
-    *)
-        echo "Service management:"
-        echo "  sudo systemctl start ledwall    # Start service"
-        echo "  sudo systemctl stop ledwall     # Stop service"
-        echo "  sudo systemctl restart ledwall  # Restart service"
-        echo "  sudo systemctl status ledwall   # Check service status"
-        echo
-        ;;
-esac
-echo "View logs with:"
-echo "  sudo journalctl -u ledwall -f"
+echo "To manage the application:"
+echo "  ./start_client.sh              # Start manually"
+echo "  pkill -f 'python.*main.py'     # Stop manually"
+echo "  pgrep -f 'python.*main.py'     # Check if running"
+echo
+echo "View logs:"
+echo "  tail -f client.log"
 echo
 echo "IMPORTANT: If the service fails to display content at boot, you may need to:"
 echo "1. Ensure the user $SERVICE_USER is logged in with an active X session"
@@ -343,13 +333,15 @@ echo "   sudo -u $SERVICE_USER xhost +"
 echo "3. Or add the service user to the 'video' group:"
 echo "   sudo usermod -a -G video $SERVICE_USER"
 echo
-echo "STARTUP METHODS:"
-echo "• Smart detection: Waits up to 60 seconds for display to be ready"
-echo "• Fixed delay: Simple 45-second wait (recommended for boot issues)"
-echo "• Timer: Starts 30s after boot (most reliable for boot issues)"
+echo "HOW IT WORKS:"
+echo "• The application starts automatically when user $SERVICE_USER logs in"
+echo "• Uses the desktop environment's autostart feature"
+echo "• Includes a backup in .bashrc for reliability"
+echo "• Waits 10 seconds for the desktop to fully load"
 echo
-echo "If boot startup still fails, try a different startup method:"
-echo "  sudo ./setup_service.sh  # Re-run setup and choose option 2 or 3"
+echo "If startup doesn't work:"
+echo "  ./start_client.sh              # Start manually to test"
+echo "  sudo ./setup_service.sh        # Re-run setup if needed"
 echo
 echo "Or start manually after login:"
 echo "  sudo systemctl start ledwall"
@@ -367,15 +359,6 @@ fi
 
 echo
 echo "To disable auto-startup:"
-case $startup_choice in
-    3)
-        echo "  sudo systemctl disable ledwall.timer"
-        echo "  sudo systemctl stop ledwall.timer"
-        ;;
-    *)
-        echo "  sudo systemctl disable ledwall"
-        ;;
-esac
-if [ "$USE_PHYSICAL_DISPLAY" = false ]; then
-    echo "  sudo systemctl disable xvfb-ledwall"
-fi
+echo "  rm -f $USER_HOME/.config/autostart/ledwall.desktop"
+echo "  rm -f $USER_HOME/.ledwall_startup.sh"
+echo "  sed -i '/LED Wall Client Auto-start/,+3d' $USER_HOME/.bashrc"
