@@ -120,11 +120,12 @@ class PriceDisplay:
         text_width = width - (2 * padding)
         text_height = height - (2 * padding)
 
-        # Format price with commas if needed
+        # Format price with dots for thousands (European style)
         try:
-            # Add commas for thousands
+            # Add dots for thousands (European format)
             numeric_price = int(price)
-            formatted_price = f"{numeric_price:,}"
+            # Format with commas first, then replace with dots
+            formatted_price = f"{numeric_price:,}".replace(",", ".")
         except:
             formatted_price = price
 
