@@ -83,24 +83,41 @@ cat > /usr/local/bin/wait-for-display.sh << 'EOL'
 #!/bin/bash
 # Script to wait for display to be available
 
-DISPLAY_TO_CHECK="${1:-:0}"
+# Get parameters from environment or command line
+DISPLAY_TO_CHECK="${1:-$DISPLAY}"
+USER_TO_CHECK="${2:-$USER}"
 MAX_WAIT=30
 WAIT_COUNT=0
 
-echo "Waiting for display $DISPLAY_TO_CHECK to be available..."
+echo "Waiting for display $DISPLAY_TO_CHECK to be available for user $USER_TO_CHECK..."
 
-while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
-    if DISPLAY="$DISPLAY_TO_CHECK" xset q >/dev/null 2>&1; then
-        echo "Display $DISPLAY_TO_CHECK is now available!"
-        exit 0
-    fi
-    
-    echo "Display $DISPLAY_TO_CHECK not ready yet, waiting... ($WAIT_COUNT/$MAX_WAIT)"
-    sleep 2
-    WAIT_COUNT=$((WAIT_COUNT + 1))
-done
+# If we have a specific user, run the check as that user
+if [ -n "$USER_TO_CHECK" ] && [ "$USER_TO_CHECK" != "root" ]; then
+    while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
+        if sudo -u "$USER_TO_CHECK" DISPLAY="$DISPLAY_TO_CHECK" xset q >/dev/null 2>&1; then
+            echo "Display $DISPLAY_TO_CHECK is now available for user $USER_TO_CHECK!"
+            exit 0
+        fi
 
-echo "Display $DISPLAY_TO_CHECK not available after $MAX_WAIT seconds"
+        echo "Display $DISPLAY_TO_CHECK not ready yet for user $USER_TO_CHECK, waiting... ($WAIT_COUNT/$MAX_WAIT)"
+        sleep 2
+        WAIT_COUNT=$((WAIT_COUNT + 1))
+    done
+else
+    # Fallback: check as current user
+    while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
+        if DISPLAY="$DISPLAY_TO_CHECK" xset q >/dev/null 2>&1; then
+            echo "Display $DISPLAY_TO_CHECK is now available!"
+            exit 0
+        fi
+
+        echo "Display $DISPLAY_TO_CHECK not ready yet, waiting... ($WAIT_COUNT/$MAX_WAIT)"
+        sleep 2
+        WAIT_COUNT=$((WAIT_COUNT + 1))
+    done
+fi
+
+echo "Display $DISPLAY_TO_CHECK not available after $MAX_WAIT seconds for user $USER_TO_CHECK"
 exit 1
 EOL
 
@@ -124,7 +141,7 @@ Environment="DISPLAY=${DETECTED_DISPLAY}"
 Environment="HOME=${USER_HOME}"
 Environment="XAUTHORITY=${USER_XAUTHORITY}"
 Environment="PATH=${SCRIPT_DIR}/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ExecStartPre=/usr/local/bin/wait-for-display.sh ${DETECTED_DISPLAY}
+ExecStartPre=/usr/local/bin/wait-for-display.sh ${DETECTED_DISPLAY} ${SERVICE_USER}
 ExecStart=${SCRIPT_DIR}/venv/bin/python ${SCRIPT_DIR}/main.py
 Restart=on-failure
 RestartSec=10
@@ -221,13 +238,29 @@ if [ "$USE_PHYSICAL_DISPLAY" = true ]; then
     sudo -u "$SERVICE_USER" xhost + &>/dev/null || true
 fi
 
-# Ask if user wants to create a delayed startup timer as backup
-read -p "Do you want to create a delayed startup timer as backup? (y/n): " create_timer
-if [[ "$create_timer" =~ ^[Yy]$ ]]; then
-    echo "Creating delayed startup timer..."
+# Ask user for startup method
+echo "Choose startup method:"
+echo "1. Smart wait (waits for display to be ready - recommended)"
+echo "2. Fixed delay (simple 45-second delay)"
+echo "3. Timer-based (starts 30s after boot)"
+read -p "Enter your choice (1/2/3): " startup_choice
 
-    # Create timer service
-    cat > /etc/systemd/system/ledwall.timer << EOL
+case $startup_choice in
+    1)
+        echo "Using smart display detection (current setup)..."
+        ;;
+    2)
+        echo "Switching to fixed delay method..."
+        # Replace ExecStartPre with a simple sleep
+        sed -i 's|ExecStartPre=/usr/local/bin/wait-for-display.sh.*|ExecStartPre=/bin/sleep 45|' /etc/systemd/system/ledwall.service
+        systemctl daemon-reload
+        echo "Service updated to use 45-second delay."
+        ;;
+    3)
+        echo "Creating delayed startup timer..."
+
+        # Create timer service
+        cat > /etc/systemd/system/ledwall.timer << EOL
 [Unit]
 Description=LED Wall Client Delayed Startup Timer
 Requires=ledwall.service
@@ -240,13 +273,17 @@ Unit=ledwall.service
 WantedBy=timers.target
 EOL
 
-    # Disable the automatic startup and enable timer instead
-    systemctl disable ledwall.service
-    systemctl enable ledwall.timer
-    systemctl start ledwall.timer
+        # Disable the automatic startup and enable timer instead
+        systemctl disable ledwall.service
+        systemctl enable ledwall.timer
+        systemctl start ledwall.timer
 
-    echo "Timer created! Service will start 30 seconds after boot."
-fi
+        echo "Timer created! Service will start 30 seconds after boot."
+        ;;
+    *)
+        echo "Using default smart display detection..."
+        ;;
+esac
 
 if systemctl start ledwall.service; then
     echo "LED Wall service started successfully"
@@ -274,13 +311,24 @@ echo "  sudo systemctl stop ledwall     # Stop the service"
 echo "  sudo systemctl restart ledwall  # Restart the service"
 echo "  sudo systemctl status ledwall   # Check service status"
 echo
-if [[ "$create_timer" =~ ^[Yy]$ ]]; then
-    echo "Timer management:"
-    echo "  sudo systemctl start ledwall.timer    # Start timer"
-    echo "  sudo systemctl stop ledwall.timer     # Stop timer"
-    echo "  sudo systemctl status ledwall.timer   # Check timer status"
-    echo
-fi
+case $startup_choice in
+    3)
+        echo "Timer management:"
+        echo "  sudo systemctl start ledwall.timer    # Start timer"
+        echo "  sudo systemctl stop ledwall.timer     # Stop timer"
+        echo "  sudo systemctl status ledwall.timer   # Check timer status"
+        echo "  sudo systemctl list-timers            # List all timers"
+        echo
+        ;;
+    *)
+        echo "Service management:"
+        echo "  sudo systemctl start ledwall    # Start service"
+        echo "  sudo systemctl stop ledwall     # Stop service"
+        echo "  sudo systemctl restart ledwall  # Restart service"
+        echo "  sudo systemctl status ledwall   # Check service status"
+        echo
+        ;;
+esac
 echo "View logs with:"
 echo "  sudo journalctl -u ledwall -f"
 echo
@@ -291,9 +339,13 @@ echo "   sudo -u $SERVICE_USER xhost +"
 echo "3. Or add the service user to the 'video' group:"
 echo "   sudo usermod -a -G video $SERVICE_USER"
 echo
-echo "ALTERNATIVE: If boot startup still fails, you can create a delayed startup:"
-echo "  sudo systemctl disable ledwall"
-echo "  sudo systemctl enable ledwall.timer  # (if you want to create a timer)"
+echo "STARTUP METHODS:"
+echo "• Smart detection: Waits for display to be ready (default)"
+echo "• Fixed delay: Simple 45-second wait"
+echo "• Timer: Starts 30s after boot"
+echo
+echo "If boot startup still fails, try a different startup method:"
+echo "  sudo ./setup_service.sh  # Re-run setup and choose option 2 or 3"
 echo
 echo "Or start manually after login:"
 echo "  sudo systemctl start ledwall"
@@ -311,12 +363,15 @@ fi
 
 echo
 echo "To disable auto-startup:"
-if [[ "$create_timer" =~ ^[Yy]$ ]]; then
-    echo "  sudo systemctl disable ledwall.timer"
-    echo "  sudo systemctl stop ledwall.timer"
-else
-    echo "  sudo systemctl disable ledwall"
-fi
+case $startup_choice in
+    3)
+        echo "  sudo systemctl disable ledwall.timer"
+        echo "  sudo systemctl stop ledwall.timer"
+        ;;
+    *)
+        echo "  sudo systemctl disable ledwall"
+        ;;
+esac
 if [ "$USE_PHYSICAL_DISPLAY" = false ]; then
     echo "  sudo systemctl disable xvfb-ledwall"
 fi
