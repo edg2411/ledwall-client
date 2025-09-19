@@ -37,18 +37,18 @@ class PriceDisplay:
         # Try to load a good font for LED wall price display, fallback to default
         try:
             # Use Arial Black for maximum boldness and LED readability
-            self.font = ImageFont.truetype("arialblk.ttf", 72)
+            self.font = ImageFont.truetype("arialblk.ttf", 30)
         except:
             try:
                 # Fallback to Arial Bold
-                self.font = ImageFont.truetype("arialbd.ttf", 72)
+                self.font = ImageFont.truetype("arialbd.ttf", 30)
             except:
                 try:
                     # Fallback to regular Arial
-                    self.font = ImageFont.truetype("arial.ttf", 72)
+                    self.font = ImageFont.truetype("arial.ttf", 30)
                 except:
                     try:
-                        self.font = ImageFont.truetype("DejaVuSans-Bold.ttf", 72)
+                        self.font = ImageFont.truetype("DejaVuSans-Bold.ttf", 30)   #Esta usando esta en linux
                     except:
                         # Fallback to default font
                         self.font = ImageFont.load_default()
@@ -148,7 +148,7 @@ class PriceDisplay:
 
         # Center the text in the cell
         text_x_centered = x + (width - text_width_actual) // 2
-        text_y_centered = y + (height - text_height_actual) // 2
+        text_y_centered = y + height // 2 - (bbox[1] + bbox[3]) // 2
 
         # Draw main text (no shadow for cleaner look)
         draw.text((text_x_centered, text_y_centered),
@@ -184,7 +184,7 @@ class PriceDisplay:
                     except:
                         test_font = self.font
 
-            bbox = self.font.getbbox(text)
+            bbox = test_font.getbbox(text)
             text_width = bbox[2] - bbox[0]
             text_height = bbox[3] - bbox[1]
 
